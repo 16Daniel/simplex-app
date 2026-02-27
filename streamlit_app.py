@@ -1,6 +1,7 @@
 import streamlit as st
 import pulp as pl
 import pandas as pd
+import plotly.express as px
 import io
 import json
 import os
@@ -74,8 +75,10 @@ if 'init_done' not in st.session_state:
 def generar_machote():
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        # Pestaña 1: Ventas
         pd.DataFrame({"Día": dias_semana, "Venta Proyectada ($)": [st.session_state[f"v_{d}"] for d in dias_semana]}).to_excel(writer, sheet_name="Ventas", index=False)
         
+        # Pestaña 2: Personal Fijo
         fijos_filas = []
         for d in dias_semana:
             fijos_filas.append({
@@ -86,6 +89,7 @@ def generar_machote():
             })
         pd.DataFrame(fijos_filas).to_excel(writer, sheet_name="Personal_Fijo", index=False)
         
+        # Pestaña 3: Demanda
         filas = []
         for d in dias_semana:
             for i, b in enumerate(bloques):
@@ -116,11 +120,13 @@ with col_up:
                 df_f = pd.read_excel(uploaded_file, sheet_name="Personal_Fijo")
                 df_d = pd.read_excel(uploaded_file, sheet_name="Demanda")
                 
+                # Cargar Ventas
                 for _, row in df_v.iterrows():
                     dia = str(row['Día']).strip()
                     if dia in dias_semana:
                         st.session_state[f"v_{dia}"] = float(row['Venta Proyectada ($)'])
                 
+                # Cargar Personal Fijo
                 def es_si(valor):
                     return str(valor).strip().lower() == 'si'
                 
@@ -137,6 +143,7 @@ with col_up:
                         st.session_state[f"hi_{dia}"] = es_si(row['Hos_Intermedio'])
                         st.session_state[f"hv_{dia}"] = es_si(row['Hos_Vespertino'])
 
+                # Cargar Demanda
                 for d in dias_semana:
                     df_dia = df_d[df_d['Día'].str.strip() == d].reset_index()
                     if not df_dia.empty and len(df_dia) == 5:
@@ -149,9 +156,9 @@ with col_up:
                             st.session_state[f"eb_{d}_{i}"] = float(df_dia['Extra_Barra'].iloc[i])
                 
                 st.success("✅ ¡Datos cargados perfectamente! Se han actualizado todas las pestañas.")
-                st.rerun() # Esto recarga la página inmediatamente mostrando los nuevos datos
+                st.rerun() 
             except Exception as e:
-                st.error(f"⚠️ Error al leer el Excel. Detalle técnico: {e}")
+                st.error(f"⚠️ Error al leer el Excel. Asegúrate de no cambiar los títulos de las columnas ni las hojas. Detalle: {e}")
 
 st.divider()
 
@@ -189,7 +196,7 @@ else:
         st.session_state['config_unlocked'] = False
         st.rerun()
 
-# Extraer configuración activa
+# Extraer configuración activa para los cálculos
 s_coc, s_ven, s_bar = config_data['s_coc'], config_data['s_ven'], config_data['s_bar']
 s_sup, s_caj, s_hos = config_data['s_sup'], config_data['s_caj'], config_data['s_hos']
 c_coc, c_sal, c_bar = config_data['c_coc'], config_data['c_sal'], config_data['c_bar']
@@ -222,7 +229,7 @@ for idx, d in enumerate(dias_semana):
         st.markdown("---")
         st.markdown(f"*📋 Carga de Trabajo (Comandas y Hrs Extra):*")
         cols = st.columns(7)
-        cols[0].markdown("*Horario*")
+        cols[0].markdown("*Horario (hrs)*")
         cols[1].markdown("*Cmds Cocina*")
         cols[2].markdown("*Ext Cocina (hrs)*")
         cols[3].markdown("*Cmds Salón*")
@@ -322,19 +329,19 @@ if st.button("🚀 Calcular Plantilla Semanal", type="primary"):
         filas_maestras = []
         for d in dias_semana:
             filas_maestras.append({
-                "Día": d, "Turno": "Matutino (10 a 18)", 
+                "Día": d, "Turno": "Matutino (10 a 18 hrs)", 
                 "Cocineros": int(resultados_diarios[d]['M'][0]), "Salón": int(resultados_diarios[d]['M'][1]), "Barra": int(resultados_diarios[d]['M'][2]),
                 "Cajero": resultados_diarios[d]['M'][3], "Supervisor": resultados_diarios[d]['M'][4], "Hostess": resultados_diarios[d]['M'][5],
                 "Costo del Día": f"$ {resultados_diarios[d]['Costo']:,.2f}" 
             })
             filas_maestras.append({
-                "Día": "", "Turno": "Intermedio (14 a 22)", 
+                "Día": "", "Turno": "Intermedio (14 a 22 hrs)", 
                 "Cocineros": int(resultados_diarios[d]['I'][0]), "Salón": int(resultados_diarios[d]['I'][1]), "Barra": int(resultados_diarios[d]['I'][2]),
                 "Cajero": resultados_diarios[d]['I'][3], "Supervisor": resultados_diarios[d]['I'][4], "Hostess": resultados_diarios[d]['I'][5],
                 "Costo del Día": "" 
             })
             filas_maestras.append({
-                "Día": "", "Turno": "Vespertino (17 a 01)", 
+                "Día": "", "Turno": "Vespertino (17 a 01 hrs)", 
                 "Cocineros": int(resultados_diarios[d]['V'][0]), "Salón": int(resultados_diarios[d]['V'][1]), "Barra": int(resultados_diarios[d]['V'][2]),
                 "Cajero": resultados_diarios[d]['V'][3], "Supervisor": resultados_diarios[d]['V'][4], "Hostess": resultados_diarios[d]['V'][5],
                 "Costo del Día": "" 

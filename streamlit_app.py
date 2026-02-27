@@ -18,8 +18,11 @@ DEFAULT_CONFIG = {
 
 def load_config():
     if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, 'r') as f:
-            return json.load(f)
+        try:
+            with open(CONFIG_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            return DEFAULT_CONFIG
     return DEFAULT_CONFIG
 
 def save_config(config):
@@ -104,7 +107,7 @@ def generar_machote():
 
 # --- ENCABEZADO Y CARGA MASIVA ---
 st.title("🍔 SIMPLEX: NÓMINA Y TURNOS IDEALES")
-st.markdown("Carga tu proyección de toda la semana. Ahora el sistema actualiza de inmediato todas las pantallas para que valides tus datos antes de calcular.")
+st.markdown("Carga tu proyección de toda la semana. El sistema actualiza de inmediato todas las pantallas para que valides tus datos antes de calcular.")
 
 col_down, col_up = st.columns([1, 2])
 with col_down:
@@ -164,7 +167,7 @@ st.divider()
 
 # --- BARRA LATERAL ---
 st.sidebar.header("💰 1. Límite Financiero")
-max_nomina_pct = st.sidebar.slider("Tope Máximo de Nómina (%)", min_value=10.0, max_value=40.0, value=st.session_state['tope'], key='tope')
+st.session_state['tope'] = st.sidebar.slider("Tope Máximo de Nómina (%)", min_value=10.0, max_value=40.0, value=st.session_state['tope'], key='tope_slider')
 
 st.sidebar.markdown("---")
 st.sidebar.header("🔐 Configuración Maestra")
@@ -209,22 +212,23 @@ tabs = st.tabs(dias_semana)
 
 for idx, d in enumerate(dias_semana):
     with tabs[idx]:
-        st.number_input(f"💰 Venta Proyectada para el {d} ($)", step=500.0, key=f"v_{d}")
+        # Vinculación directa con la memoria
+        st.session_state[f"v_{d}"] = st.number_input(f"💰 Venta Proyectada para el {d} ($)", value=st.session_state[f"v_{d}"], step=500.0, key=f"input_v_{d}")
         
         st.markdown(f"*👔 Personal Fijo Requerido ({d}):*")
         col_sup, col_caj, col_hos = st.columns(3)
         with col_sup:
-            st.checkbox("Supervisor Matutino", key=f"sm_{d}")
-            st.checkbox("Supervisor Intermedio", key=f"si_{d}")
-            st.checkbox("Supervisor Vespertino", key=f"sv_{d}")
+            st.session_state[f"sm_{d}"] = st.checkbox("Supervisor Matutino", value=st.session_state[f"sm_{d}"], key=f"chk_sm_{d}")
+            st.session_state[f"si_{d}"] = st.checkbox("Supervisor Intermedio", value=st.session_state[f"si_{d}"], key=f"chk_si_{d}")
+            st.session_state[f"sv_{d}"] = st.checkbox("Supervisor Vespertino", value=st.session_state[f"sv_{d}"], key=f"chk_sv_{d}")
         with col_caj:
-            st.checkbox("Cajero Matutino", key=f"cm_{d}")
-            st.checkbox("Cajero Intermedio", key=f"ci_{d}")
-            st.checkbox("Cajero Vespertino", key=f"cv_{d}")
+            st.session_state[f"cm_{d}"] = st.checkbox("Cajero Matutino", value=st.session_state[f"cm_{d}"], key=f"chk_cm_{d}")
+            st.session_state[f"ci_{d}"] = st.checkbox("Cajero Intermedio", value=st.session_state[f"ci_{d}"], key=f"chk_ci_{d}")
+            st.session_state[f"cv_{d}"] = st.checkbox("Cajero Vespertino", value=st.session_state[f"cv_{d}"], key=f"chk_cv_{d}")
         with col_hos:
-            st.checkbox("Hostess Matutino", key=f"hm_{d}")
-            st.checkbox("Hostess Intermedio", key=f"hi_{d}")
-            st.checkbox("Hostess Vespertino", key=f"hv_{d}")
+            st.session_state[f"hm_{d}"] = st.checkbox("Hostess Matutino", value=st.session_state[f"hm_{d}"], key=f"chk_hm_{d}")
+            st.session_state[f"hi_{d}"] = st.checkbox("Hostess Intermedio", value=st.session_state[f"hi_{d}"], key=f"chk_hi_{d}")
+            st.session_state[f"hv_{d}"] = st.checkbox("Hostess Vespertino", value=st.session_state[f"hv_{d}"], key=f"chk_hv_{d}")
             
         st.markdown("---")
         st.markdown(f"*📋 Carga de Trabajo (Comandas y Hrs Extra):*")
@@ -240,12 +244,12 @@ for idx, d in enumerate(dias_semana):
         for i in range(5):
             cc = st.columns(7)
             cc[0].write(bloques[i][:11]) 
-            cc[1].number_input("cc", step=5.0, key=f"cc_{d}_{i}", label_visibility="collapsed")
-            cc[2].number_input("ec", step=0.5, key=f"ec_{d}_{i}", label_visibility="collapsed")
-            cc[3].number_input("cs", step=5.0, key=f"cs_{d}_{i}", label_visibility="collapsed")
-            cc[4].number_input("es", step=0.5, key=f"es_{d}_{i}", label_visibility="collapsed")
-            cc[5].number_input("cb", step=5.0, key=f"cb_{d}_{i}", label_visibility="collapsed")
-            cc[6].number_input("eb", step=0.5, key=f"eb_{d}_{i}", label_visibility="collapsed")
+            st.session_state[f"cc_{d}{i}"] = cc[1].number_input("cc", value=st.session_state[f"cc{d}{i}"], step=5.0, key=f"input_cc{d}_{i}", label_visibility="collapsed")
+            st.session_state[f"ec_{d}{i}"] = cc[2].number_input("ec", value=st.session_state[f"ec{d}{i}"], step=0.5, key=f"input_ec{d}_{i}", label_visibility="collapsed")
+            st.session_state[f"cs_{d}{i}"] = cc[3].number_input("cs", value=st.session_state[f"cs{d}{i}"], step=5.0, key=f"input_cs{d}_{i}", label_visibility="collapsed")
+            st.session_state[f"es_{d}{i}"] = cc[4].number_input("es", value=st.session_state[f"es{d}{i}"], step=0.5, key=f"input_es{d}_{i}", label_visibility="collapsed")
+            st.session_state[f"cb_{d}{i}"] = cc[5].number_input("cb", value=st.session_state[f"cb{d}{i}"], step=5.0, key=f"input_cb{d}_{i}", label_visibility="collapsed")
+            st.session_state[f"eb_{d}{i}"] = cc[6].number_input("eb", value=st.session_state[f"eb{d}{i}"], step=0.5, key=f"input_eb{d}_{i}", label_visibility="collapsed")
 
 st.divider()
 

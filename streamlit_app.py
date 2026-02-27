@@ -3,22 +3,40 @@ import pulp as pl
 import pandas as pd
 import plotly.express as px
 import io
+import json
+import os
 
 # Configuración de la página
 st.set_page_config(page_title="Simplex: Nómina y Turnos Ideales", layout="wide")
+
+# --- MANEJO DE CONFIGURACIÓN MAESTRA (GUARDADO PERMANENTE) ---
+CONFIG_FILE = "config_simplex.json"
+DEFAULT_CONFIG = {
+    's_coc': 350.0, 's_ven': 300.0, 's_bar': 320.0, 's_sup': 500.0, 's_caj': 300.0, 's_hos': 250.0,
+    'c_coc': 8, 'c_sal': 12, 'c_bar': 15
+}
+
+def load_config():
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, 'r') as f:
+            return json.load(f)
+    return DEFAULT_CONFIG
+
+def save_config(config):
+    with open(CONFIG_FILE, 'w') as f:
+        json.dump(config, f)
+
+config_data = load_config()
 
 # --- INICIALIZAR VARIABLES EN MEMORIA (Para la carga del Excel) ---
 if 'data_loaded' not in st.session_state:
     st.session_state.update({
         'venta': 15000.0, 'tope': 20.0,
-        's_coc': 350.0, 's_ven': 300.0, 's_bar': 320.0, 's_sup': 500.0, 's_caj': 300.0, 's_hos': 250.0,
-        'c_coc': 8, 'c_sal': 12, 'c_bar': 15,
         'sup_m': False, 'sup_i': True, 'sup_v': False,
         'caj_m': True, 'caj_i': False, 'caj_v': True,
         'hos_m': False, 'hos_i': True, 'hos_v': True,
         'data_loaded': True, 'last_upload': None
     })
-    # Listas de demanda por defecto [Bloque 1, B2, B3, B4, B5]
     st.session_state['dem_c'] = [15.0, 30.0, 20.0, 60.0, 25.0]
     st.session_state['ext_c'] = [1.0, 0.0, 0.0, 0.5, 1.5]
     st.session_state['dem_s'] = [20.0, 45.0, 30.0, 85.0, 30.0]
@@ -26,29 +44,21 @@ if 'data_loaded' not in st.session_state:
     st.session_state['dem_b'] = [5.0, 20.0, 15.0, 70.0, 40.0]
     st.session_state['ext_b'] = [1.0, 0.0, 0.0, 0.5, 1.5]
 
-# --- FUNCIÓN PARA CREAR EL MACHOTE EXCEL ---
+# --- FUNCIÓN PARA CREAR EL MACHOTE EXCEL (Simplificado) ---
 def generar_machote():
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        # Pestaña 1: Variables Generales
         var_data = {
             "Parametro": [
                 "Venta Proyectada ($)", "Tope Maximo Nomina (%)", 
-                "Salario Cocinero ($)", "Salario Vendedor ($)", "Salario Barra ($)",
-                "Salario Supervisor ($)", "Salario Cajero ($)", "Salario Hostess ($)",
-                "Capacidad Cocina (cmd/hr)", "Capacidad Salon (cmd/hr)", "Capacidad Barra (cmd/hr)",
                 "Supervisor Matutino (Si/No)", "Supervisor Intermedio (Si/No)", "Supervisor Vespertino (Si/No)",
                 "Cajero Matutino (Si/No)", "Cajero Intermedio (Si/No)", "Cajero Vespertino (Si/No)",
                 "Hostess Matutino (Si/No)", "Hostess Intermedio (Si/No)", "Hostess Vespertino (Si/No)"
             ],
-            "Valor": [
-                15000, 20, 350, 300, 320, 500, 300, 250, 8, 12, 15,
-                "No", "Si", "No", "Si", "No", "Si", "No", "Si", "Si"
-            ]
+            "Valor": [15000, 20, "No", "Si", "No", "Si", "No", "Si", "No", "Si", "Si"]
         }
         pd.DataFrame(var_data).to_excel(writer, sheet_name="Variables", index=False)
         
-        # Pestaña 2: Demanda
         dem_data = {
             "Bloque": ["10 a 14 hrs", "14 a 17 hrs", "17 a 18 hrs", "18 a 22 hrs", "22 a 01 hrs"],
             "Cmd_Cocina": [15, 30, 20, 60, 25], "Ext_Cocina": [1.0, 0.0, 0.0, 0.5, 1.5],
@@ -60,87 +70,95 @@ def generar_machote():
 
 # --- ENCABEZADO Y CARGA MASIVA ---
 st.title("🍔 SIMPLEX: NÓMINA Y TURNOS IDEALES")
-st.markdown("LLena los datos manualmente o usa la *Carga Rápida por Excel* para automatizar el proceso. Revisa tus números y presiona el botón al final para calcular.")
+st.markdown("Carga tu proyección de ventas y comandas. El sistema usará tus capacidades y salarios guardados para optimizar tu nómina.")
 
 col_down, col_up = st.columns([1, 2])
 with col_down:
-    st.info("⬇️ *Paso 1: Descarga la plantilla*")
+    st.info("⬇️ *Paso 1: Descarga la plantilla (Simplificada)*")
     st.download_button(label="📥 Descargar Machote de Excel", data=generar_machote(), file_name="Machote_Planeacion.xlsx", mime="application/vnd.ms-excel")
 
 with col_up:
     uploaded_file = st.file_uploader("⬆️ *Paso 2: Sube tu Machote lleno aquí*", type=["xlsx"])
     if uploaded_file and uploaded_file.name != st.session_state['last_upload']:
         try:
-            # Leer excel
             df_v = pd.read_excel(uploaded_file, sheet_name="Variables")
             df_d = pd.read_excel(uploaded_file, sheet_name="Demanda")
-            
-            # Mapear Variables
             v = df_v['Valor'].tolist()
             st.session_state.update({
                 'venta': float(v[0]), 'tope': float(v[1]),
-                's_coc': float(v[2]), 's_ven': float(v[3]), 's_bar': float(v[4]),
-                's_sup': float(v[5]), 's_caj': float(v[6]), 's_hos': float(v[7]),
-                'c_coc': int(v[8]), 'c_sal': int(v[9]), 'c_bar': int(v[10]),
-                'sup_m': str(v[11]).strip().lower() == 'si', 'sup_i': str(v[12]).strip().lower() == 'si', 'sup_v': str(v[13]).strip().lower() == 'si',
-                'caj_m': str(v[14]).strip().lower() == 'si', 'caj_i': str(v[15]).strip().lower() == 'si', 'caj_v': str(v[16]).strip().lower() == 'si',
-                'hos_m': str(v[17]).strip().lower() == 'si', 'hos_i': str(v[18]).strip().lower() == 'si', 'hos_v': str(v[19]).strip().lower() == 'si',
+                'sup_m': str(v[2]).strip().lower() == 'si', 'sup_i': str(v[3]).strip().lower() == 'si', 'sup_v': str(v[4]).strip().lower() == 'si',
+                'caj_m': str(v[5]).strip().lower() == 'si', 'caj_i': str(v[6]).strip().lower() == 'si', 'caj_v': str(v[7]).strip().lower() == 'si',
+                'hos_m': str(v[8]).strip().lower() == 'si', 'hos_i': str(v[9]).strip().lower() == 'si', 'hos_v': str(v[10]).strip().lower() == 'si',
             })
-            
-            # Mapear Demanda
             st.session_state['dem_c'] = df_d['Cmd_Cocina'].tolist()
             st.session_state['ext_c'] = df_d['Ext_Cocina'].tolist()
             st.session_state['dem_s'] = df_d['Cmd_Salon'].tolist()
             st.session_state['ext_s'] = df_d['Ext_Salon'].tolist()
             st.session_state['dem_b'] = df_d['Cmd_Barra'].tolist()
             st.session_state['ext_b'] = df_d['Ext_Barra'].tolist()
-            
             st.session_state['last_upload'] = uploaded_file.name
             st.rerun() 
         except Exception as e:
-            st.error(f"Error al leer el Excel. Verifica que no cambiaste el formato original. Detalles: {e}")
+            st.error(f"Error al leer el Excel. Detalles: {e}")
 
 st.divider()
 
-# --- BARRA LATERAL: FINANZAS Y SALARIOS ---
-st.sidebar.header("💰 1. Variables Financieras")
+# --- BARRA LATERAL ---
+st.sidebar.header("💰 1. Variables Financieras (Diarias)")
 venta_proyectada = st.sidebar.number_input("Venta Proyectada del Día ($)", value=st.session_state['venta'], step=500.0)
 max_nomina_pct = st.sidebar.slider("Tope Máximo de Nómina (%)", min_value=10.0, max_value=40.0, value=st.session_state['tope'])
 presupuesto_nomina = venta_proyectada * (max_nomina_pct / 100)
 st.sidebar.success(f"Presupuesto máximo: *$ {presupuesto_nomina:,.2f}*")
 
-st.sidebar.header("💸 2. Salarios por Turno ($)")
-salario_cocinero = st.sidebar.number_input("Cocinero ($)", value=st.session_state['s_coc'], step=10.0)
-salario_vendedor = st.sidebar.number_input("Vendedor/Mesero ($)", value=st.session_state['s_ven'], step=10.0)
-salario_barra = st.sidebar.number_input("Barra ($)", value=st.session_state['s_bar'], step=10.0)
-salario_sup = st.sidebar.number_input("Supervisor ($)", value=st.session_state['s_sup'], step=10.0)
-salario_caja = st.sidebar.number_input("Cajero ($)", value=st.session_state['s_caj'], step=10.0)
-salario_hostess = st.sidebar.number_input("Hostess ($)", value=st.session_state['s_hos'], step=10.0)
+st.sidebar.header("👔 2. Personal Fijo (Turnos)")
+sup_m = st.sidebar.checkbox("Supervisor Matutino", value=st.session_state['sup_m'], key="sm")
+sup_i = st.sidebar.checkbox("Supervisor Intermedio", value=st.session_state['sup_i'], key="si")
+sup_v = st.sidebar.checkbox("Supervisor Vespertino", value=st.session_state['sup_v'], key="sv")
 
-# Corrección de los keys duplicados aplicados aquí:
-st.sidebar.header("👔 3. Supervisor")
-sup_m = st.sidebar.checkbox("Turno Matutino", value=st.session_state['sup_m'], key="sup_mat")
-sup_i = st.sidebar.checkbox("Turno Intermedio", value=st.session_state['sup_i'], key="sup_int")
-sup_v = st.sidebar.checkbox("Turno Vespertino", value=st.session_state['sup_v'], key="sup_ves")
+caja_m = st.sidebar.checkbox("Cajero Matutino", value=st.session_state['caj_m'], key="cm")
+caja_i = st.sidebar.checkbox("Cajero Intermedio", value=st.session_state['caj_i'], key="ci")
+caja_v = st.sidebar.checkbox("Cajero Vespertino", value=st.session_state['caj_v'], key="cv")
 
-st.sidebar.header("🧮 4. Cajero")
-caja_m = st.sidebar.checkbox("Turno Matutino", value=st.session_state['caj_m'], key="caj_mat")
-caja_i = st.sidebar.checkbox("Turno Intermedio", value=st.session_state['caj_i'], key="caj_int")
-caja_v = st.sidebar.checkbox("Turno Vespertino", value=st.session_state['caj_v'], key="caj_ves")
+hos_m = st.sidebar.checkbox("Hostess Matutino", value=st.session_state['hos_m'], key="hm")
+hos_i = st.sidebar.checkbox("Hostess Intermedio", value=st.session_state['hos_i'], key="hi")
+hos_v = st.sidebar.checkbox("Hostess Vespertino", value=st.session_state['hos_v'], key="hv")
 
-st.sidebar.header("💁‍♀️ 5. Hostess")
-hos_m = st.sidebar.checkbox("Turno Matutino", value=st.session_state['hos_m'], key="hos_mat")
-hos_i = st.sidebar.checkbox("Turno Intermedio", value=st.session_state['hos_i'], key="hos_int")
-hos_v = st.sidebar.checkbox("Turno Vespertino", value=st.session_state['hos_v'], key="hos_ves")
+# --- CONFIGURACIÓN MAESTRA (OCULTA) ---
+st.sidebar.markdown("---")
+st.sidebar.header("🔐 Configuración Maestra")
+st.sidebar.write("Variables fijas. Solo modificar con autorización.")
+pwd = st.sidebar.text_input("Contraseña:", type="password")
 
-st.sidebar.header("⚡ 6. Capacidad Productiva")
-cap_cocina = st.sidebar.number_input("Comandas Cocina / hr", value=st.session_state['c_coc'], step=1)
-cap_salon = st.sidebar.number_input("Comandas Salón / hr", value=st.session_state['c_sal'], step=1)
-cap_barra = st.sidebar.number_input("Comandas Barra / hr", value=st.session_state['c_bar'], step=1)
+if pwd == "M@5terkey":
+    st.sidebar.success("Acceso Concedido")
+    with st.sidebar.expander("Ajustar Salarios y Capacidades", expanded=True):
+        new_s_coc = st.number_input("Salario Cocinero ($)", value=config_data['s_coc'])
+        new_s_ven = st.number_input("Salario Vendedor ($)", value=config_data['s_ven'])
+        new_s_bar = st.number_input("Salario Barra ($)", value=config_data['s_bar'])
+        new_s_sup = st.number_input("Salario Supervisor ($)", value=config_data['s_sup'])
+        new_s_caj = st.number_input("Salario Cajero ($)", value=config_data['s_caj'])
+        new_s_hos = st.number_input("Salario Hostess ($)", value=config_data['s_hos'])
+        
+        new_c_coc = st.number_input("Capacidad Cocina (cmd/hr)", value=config_data['c_coc'])
+        new_c_sal = st.number_input("Capacidad Salón (cmd/hr)", value=config_data['c_sal'])
+        new_c_bar = st.number_input("Capacidad Barra (cmd/hr)", value=config_data['c_bar'])
+        
+        if st.button("💾 Guardar Cambios"):
+            config_data.update({
+                's_coc': new_s_coc, 's_ven': new_s_ven, 's_bar': new_s_bar,
+                's_sup': new_s_sup, 's_caj': new_s_caj, 's_hos': new_s_hos,
+                'c_coc': new_c_coc, 'c_sal': new_c_sal, 'c_bar': new_c_bar
+            })
+            save_config(config_data)
+            st.sidebar.info("¡Configuración guardada! Aplicará para todos los cálculos.")
+
+# Extraer variables maestras para el cálculo
+s_coc, s_ven, s_bar = config_data['s_coc'], config_data['s_ven'], config_data['s_bar']
+s_sup, s_caj, s_hos = config_data['s_sup'], config_data['s_caj'], config_data['s_hos']
+c_coc, c_sal, c_bar = config_data['c_coc'], config_data['c_sal'], config_data['c_bar']
 
 # --- ÁREA PRINCIPAL: DEMANDA ---
-st.subheader("📋 7. Proyección de Carga de Trabajo por Área")
-st.write("Verifica la información cargada. Si algo cambió, puedes modificarlo directamente en estas casillas antes de calcular.")
+st.subheader("📋 3. Proyección de Carga de Trabajo por Área")
 
 bloques = ["10:00 a 14:00 (4 hrs)", "14:00 a 17:00 (3 hrs)", "17:00 a 18:00 (1 hr)", "18:00 a 22:00 (4 hrs)", "22:00 a 01:00 (3 hrs)"]
 horas_por_bloque = [4, 3, 1, 4, 3]
@@ -178,7 +196,7 @@ if st.button("🚀 Calcular Plantilla Óptima", type="primary"):
     vars_personal = pl.LpVariable.dicts("Pers", [(r, t) for r in roles for t in turnos], lowBound=0, cat='Integer')
     modelo += pl.lpSum([vars_personal[(r, t)] for r in roles for t in turnos])
     
-    capacidades = {'Cocina': cap_cocina, 'Salon': cap_salon, 'Barra': cap_barra}
+    capacidades = {'Cocina': c_coc, 'Salon': c_sal, 'Barra': c_bar}
     demandas = {'Cocina': dem_c, 'Salon': dem_s, 'Barra': dem_b}
     extras = {'Cocina': ext_c, 'Salon': ext_s, 'Barra': ext_b}
     
@@ -198,14 +216,14 @@ if st.button("🚀 Calcular Plantilla Óptima", type="primary"):
     qty_sup_m, qty_sup_i, qty_sup_v = (1 if sup_m else 0), (1 if sup_i else 0), (1 if sup_v else 0)
     qty_hos_m, qty_hos_i, qty_hos_v = (1 if hos_m else 0), (1 if hos_i else 0), (1 if hos_v else 0)
     
-    costo_fijo += (qty_caja_m + qty_caja_i + qty_caja_v) * salario_caja
-    costo_fijo += (qty_sup_m + qty_sup_i + qty_sup_v) * salario_sup
-    costo_fijo += (qty_hos_m + qty_hos_i + qty_hos_v) * salario_hostess
+    costo_fijo += (qty_caja_m + qty_caja_i + qty_caja_v) * s_caj
+    costo_fijo += (qty_sup_m + qty_sup_i + qty_sup_v) * s_sup
+    costo_fijo += (qty_hos_m + qty_hos_i + qty_hos_v) * s_hos
     
     costo_var = pl.lpSum([
-        vars_personal[('Cocina', t)] * salario_cocinero +
-        vars_personal[('Salon', t)] * salario_vendedor +
-        vars_personal[('Barra', t)] * salario_barra 
+        vars_personal[('Cocina', t)] * s_coc +
+        vars_personal[('Salon', t)] * s_ven +
+        vars_personal[('Barra', t)] * s_bar 
         for t in turnos
     ])
     
@@ -218,13 +236,11 @@ if st.button("🚀 Calcular Plantilla Óptima", type="primary"):
         costo_total = pl.value(costo_var) + costo_fijo
         pct_real = (costo_total / venta_proyectada) * 100
         
-        # --- MÉTRICAS VISUALES ---
         kpi1, kpi2, kpi3 = st.columns(3)
         kpi1.metric(label="💰 Costo Total de Nómina", value=f"$ {costo_total:,.2f}")
         kpi2.metric(label="📈 % de la Venta Proyectada", value=f"{pct_real:.1f} %")
         kpi3.metric(label="🎯 Presupuesto Máximo", value=f"$ {presupuesto_nomina:,.2f}")
         
-        # --- TABLA DE RESULTADOS ---
         def fmt(qty, price):
             return f"{int(qty)} ($ {int(qty) * price:,.2f})"
 
@@ -232,27 +248,21 @@ if st.button("🚀 Calcular Plantilla Óptima", type="primary"):
         s_m, s_i, s_v = int(vars_personal[('Salon', 'M')].varValue), int(vars_personal[('Salon', 'I')].varValue), int(vars_personal[('Salon', 'V')].varValue)
         b_m, b_i, b_v = int(vars_personal[('Barra', 'M')].varValue), int(vars_personal[('Barra', 'I')].varValue), int(vars_personal[('Barra', 'V')].varValue)
         
-        tot_c = c_m + c_i + c_v
-        tot_s = s_m + s_i + s_v
-        tot_b = b_m + b_i + b_v
-        tot_caja = qty_caja_m + qty_caja_i + qty_caja_v
-        tot_sup = qty_sup_m + qty_sup_i + qty_sup_v
-        tot_hos = qty_hos_m + qty_hos_i + qty_hos_v
+        tot_c, tot_s, tot_b = c_m + c_i + c_v, s_m + s_i + s_v, b_m + b_i + b_v
+        tot_caja, tot_sup, tot_hos = qty_caja_m + qty_caja_i + qty_caja_v, qty_sup_m + qty_sup_i + qty_sup_v, qty_hos_m + qty_hos_i + qty_hos_v
         
         resultados = {
             "Turno": ["Matutino (10 a 18 hrs)", "Intermedio (14 a 22 hrs)", "Vespertino (17 a 01 hrs)", "🔥 TOTAL DEL DÍA 🔥"],
-            "Cocinero": [fmt(c_m, salario_cocinero), fmt(c_i, salario_cocinero), fmt(c_v, salario_cocinero), fmt(tot_c, salario_cocinero)],
-            "Vendedor (Salón)": [fmt(s_m, salario_vendedor), fmt(s_i, salario_vendedor), fmt(s_v, salario_vendedor), fmt(tot_s, salario_vendedor)],
-            "Barra": [fmt(b_m, salario_barra), fmt(b_i, salario_barra), fmt(b_v, salario_barra), fmt(tot_b, salario_barra)],
-            "Cajero": [fmt(qty_caja_m, salario_caja), fmt(qty_caja_i, salario_caja), fmt(qty_caja_v, salario_caja), fmt(tot_caja, salario_caja)],
-            "Supervisor": [fmt(qty_sup_m, salario_sup), fmt(qty_sup_i, salario_sup), fmt(qty_sup_v, salario_sup), fmt(tot_sup, salario_sup)],
-            "Hostess": [fmt(qty_hos_m, salario_hostess), fmt(qty_hos_i, salario_hostess), fmt(qty_hos_v, salario_hostess), fmt(tot_hos, salario_hostess)]
+            "Cocinero": [fmt(c_m, s_coc), fmt(c_i, s_coc), fmt(c_v, s_coc), fmt(tot_c, s_coc)],
+            "Vendedor (Salón)": [fmt(s_m, s_ven), fmt(s_i, s_ven), fmt(s_v, s_ven), fmt(tot_s, s_ven)],
+            "Barra": [fmt(b_m, s_bar), fmt(b_i, s_bar), fmt(b_v, s_bar), fmt(tot_b, s_bar)],
+            "Cajero": [fmt(qty_caja_m, s_caj), fmt(qty_caja_i, s_caj), fmt(qty_caja_v, s_caj), fmt(tot_caja, s_caj)],
+            "Supervisor": [fmt(qty_sup_m, s_sup), fmt(qty_sup_i, s_sup), fmt(qty_sup_v, s_sup), fmt(tot_sup, s_sup)],
+            "Hostess": [fmt(qty_hos_m, s_hos), fmt(qty_hos_i, s_hos), fmt(qty_hos_v, s_hos), fmt(tot_hos, s_hos)]
         }
         st.table(pd.DataFrame(resultados).set_index("Turno"))
         
-        # --- EXPLICACIÓN DIRECTA (100% BLINDADA) ---
         st.subheader("💡 Resumen Ejecutivo")
-        
         st.markdown(f"""
         ✔️ *Presupuesto Disponible:* Tienes un límite de *$ {presupuesto_nomina:,.2f}* . Esto equivale al *{max_nomina_pct:.1f} %* de tu venta proyectada de *$ {venta_proyectada:,.2f}* .
         
@@ -263,11 +273,27 @@ if st.button("🚀 Calcular Plantilla Óptima", type="primary"):
         ✔️ *Resultado Exitoso:* El costo total de tu nómina planeada es de *$ {costo_total:,.2f}* . Representa exactamente el *{pct_real:.1f} %* de tu venta. ¡Lograste la meta! 🚀
         """)
         
-        # --- GRÁFICOS POR BLOQUE ---
-        st.subheader("📊 Gráficas de Cobertura por Bloque (Personal vs Trabajo)")
-        st.write("Estas gráficas te muestran, bloque por bloque, si las horas de trabajo que rinde tu personal superan a las horas que te exige la operación (comandas + extra).")
+        st.divider()
+
+        # --- NUEVO GRÁFICO: EL PULSO DEL RESTAURANTE (CARGA DE TRABAJO) ---
+        st.subheader("🌋 El Pulso del Restaurante (Volumen de Comandas)")
+        st.info("💡 *¿Qué representa este gráfico?* \n Muestra el volumen bruto de comandas (el Rush) a lo largo del día. Fíjate en el punto más alto de la montaña: es el cuello de botella. El sistema justifica la contratación de tu turno Intermedio precisamente para cubrir y aplastar esta montaña sin que el servicio colapse.")
         
-        nombres_bloques = ['10-14 hrs', '14-17 hrs', '17-18 hrs', '18-22 hrs', '22-01 hrs']
+        nombres_bloques_cortos = ['10-14 hrs', '14-17 hrs', '17-18 hrs', '18-22 hrs', '22-01 hrs']
+        df_rush = pd.DataFrame({
+            'Bloque Horario': nombres_bloques_cortos * 3,
+            'Comandas': dem_c + dem_s + dem_b,
+            'Área': ['Cocina']*5 + ['Salón']*5 + ['Barra']*5
+        })
+        fig_rush = px.area(df_rush, x='Bloque Horario', y='Comandas', color='Área', 
+                           title="La Montaña Rusa de tu Operación",
+                           color_discrete_map={'Cocina': '#FF7F0E', 'Salón': '#1F77B4', 'Barra': '#2CA02C'})
+        st.plotly_chart(fig_rush, use_container_width=True)
+
+        # --- GRÁFICOS DE COBERTURA ---
+        st.subheader("📊 Cobertura por Bloque (Personal vs Trabajo)")
+        st.info("💡 *¿Cómo leer estos gráficos?* \n * *Barra Roja:* Es la exigencia de tu operación (las horas necesarias para sacar comandas + limpieza). \n * *Barra Verde:* Es la capacidad del personal que el sistema te asignó. \n * *La Regla de Oro:* Mientras tu barra verde sea igual o ligeramente más alta que la roja, tu operación está a salvo. Si sobra mucha barra verde, el sistema evitó contratar más gente para no quemar tu presupuesto de nómina.")
+        
         tab1, tab2, tab3 = st.tabs(["🔥 Cocina", "🏃 Salón", "🍺 Barra"])
         
         def generar_grafico(rol, tab_obj):
@@ -281,9 +307,9 @@ if st.button("🚀 Calcular Plantilla Óptima", type="primary"):
                 elif i == 4: g = vars_personal[(rol, 'V')].varValue
                 prov_b.append(round(g * horas_por_bloque[i], 1))
             
-            df_plot = pd.DataFrame({'Bloque Horario': nombres_bloques * 2, 'Horas': req_b + prov_b, 'Indicador': ['Horas NECESARIAS (Demanda + Extra)']*5 + ['Horas PROGRAMADAS (Tu Personal)']*5})
+            df_plot = pd.DataFrame({'Bloque Horario': nombres_bloques_cortos * 2, 'Horas': req_b + prov_b, 'Indicador': ['Horas NECESARIAS (Demanda + Extra)']*5 + ['Horas PROGRAMADAS (Tu Personal)']*5})
             fig = px.bar(df_plot, x='Bloque Horario', y='Horas', color='Indicador', barmode='group', text_auto='.1f', color_discrete_map={'Horas NECESARIAS (Demanda + Extra)': '#d62728', 'Horas PROGRAMADAS (Tu Personal)': '#2ca02c'})
-            fig.update_layout(title=f"Balance de Horas en {rol} (Vista por Bloques)", xaxis_title="Bloques de Horario", yaxis_title="Cantidad de Horas-Hombre (hrs)", legend_title=None, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+            fig.update_layout(title=f"Balance de Horas en {rol}", xaxis_title="Bloques de Horario", yaxis_title="Cantidad de Horas-Hombre (hrs)", legend_title=None, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
             tab_obj.plotly_chart(fig, use_container_width=True)
 
         generar_grafico('Cocina', tab1)
